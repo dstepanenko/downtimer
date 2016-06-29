@@ -9,15 +9,38 @@ from urlparse import urlparse
 
 
 def main():
-    data = {"auth": {"tenantName": "admin",
-                     "passwordCredentials": {"username": "admin",
-                                             "password": "secret"}}}
-
+    data = {
+        "auth": {
+            "scope": {
+                "project": {
+                    "domain": {
+                        "id": "default"
+                    },
+                    "name": "admin"
+                }
+            },
+            "identity": {
+                "password": {
+                    "user": {
+                        "domain": {
+                            "id": "default"
+                        },
+                        "password": "secret",
+                        "name": "admin"
+                    }
+                },
+                "methods": [
+                    "password"
+                ]
+            }
+        }
+    }
     data = json.dumps(data)
     r = requests.post('http://172.29.236.10:5000/v3/auth/tokens', data)
     result = r.json()
-    services = result['access']['serviceCatalog']
-    token = result['access']['token']['id']
+
+    services = result['token']['catalog']
+    token = r.headers['X-Subject-Token']
     endpoints = parse_endpoints(services)
     floating_ips = get_floating_ips(services, token)
     for ip in floating_ips:
@@ -62,7 +85,7 @@ def get_floating_ips(services, token):
     url = None
     for service in services:
         if service['type'] == 'compute':
-            url = service['endpoints'][0]['adminURL']+ '/os-floating-ips'
+            url = service['endpoints'][0]['url']+ '/os-floating-ips'
     if url is None:
         raise Exception("No compute found!")
     headers = {'X-Auth-Token': token}
@@ -104,7 +127,7 @@ def parse_endpoints(services):
     service_to_track = ('compute', 'image', 'network', 'volume')
     for service in services:
         if service['type'] in service_to_track:
-            url = urlparse(service['endpoints'][0]['adminURL'])
+            url = urlparse(service['endpoints'][0]['url'])
             endpoints[service['type']] = "http://" + url.hostname + ":" + str(
                 url.port) + "/"
     return endpoints
