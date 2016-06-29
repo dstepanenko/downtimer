@@ -46,6 +46,7 @@ def main():
     for ip in floating_ips:
         worker = threading.Thread(target=ping,
                                   args=(ip,))
+        worker.daemon = True
         worker.start()
 
     print(endpoints)
@@ -53,6 +54,7 @@ def main():
     for endpoint, address in endpoints.items():
         worker = threading.Thread(target=do_check,
                                   args=(endpoint, address, token))
+        worker.daemon = True
         worker.start()
 
 
@@ -135,4 +137,5 @@ def parse_endpoints(services):
 
 if __name__ == "__main__":
     main()
-
+    while True:
+        time.sleep(3)
