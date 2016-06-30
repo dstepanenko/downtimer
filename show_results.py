@@ -44,14 +44,14 @@ for address in addresses:
         continue
 
     try:
-        value =  bad_ping_exit_code[key]
+        value =  bad_ping_exit_code[key].next()
         failed_ping = value['count']
     except:
         failed_ping = 0
 
     try:
-        value = partially_lost_ping[key]
-        lost_ping = value['sum'] * 5
+        value = partially_lost_ping[key].next()
+        lost_ping = value['sum'] * 0.05
     except:
         lost_ping = 0
 

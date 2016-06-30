@@ -75,7 +75,7 @@ def do_check(endpoint, address, token):
             print e
 
         message = ('service_response,service_name=' + endpoint +
-            ',status_code=' + str(r.status_code) + ' timeout=' +
+            ' status_code=' + str(r.status_code) + ',timeout=' +
             str(timeout) + ',value=' + str(r.elapsed.microseconds))
         influx_resp = requests.post(
             'http://monit-ent.vm.mirantis.net:8086/write?db=endpoints',
@@ -115,10 +115,10 @@ def ping(address):
         except:
             exit_code = '1'
             packet_loss = '100'
-            total_time = '100'
+            total_time = '2000'
         print 'ttt = %s loss = %s code = %s' % (total_time, packet_loss, exit_code)
-        message = ('floating_ip_pings,total_time=' + total_time +
-                   ' exit_code=' + exit_code + ',value=' + packet_loss)
+        message = ('floating_ip_pings,address=' + address + ' total_time=' + total_time +
+                   ',exit_code=' + exit_code + ',value=' + packet_loss)
         influx_resp = requests.post(
             'http://monit-ent.vm.mirantis.net:8086/write?db=endpoints',
             message)
