@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import subprocess
 import re
@@ -51,7 +52,7 @@ def main():
 
     print(endpoints)
     print token
-    for endpoint, address in endpoints.items():
+    for endpoint, address in endpoints:
         worker = threading.Thread(target=do_check,
                                   args=(endpoint, address, token))
         worker.daemon = True
@@ -67,7 +68,11 @@ def do_check(endpoint, address, token):
             timeout = 0
             headers = {'X-Auth-Token': token}
             r = requests.get(address, headers=headers, timeout=SERVICE_TIMEOUT)
-            print address + ": " + str(r.status_code) + "\n"
+            status_msg = 'FAIL'
+            if r.status_code in [200, 300]:
+                status_msg = 'OK'
+            print (endpoint + " " + address + ": " + str(r.status_code) + " "
+                   + status_msg + " " + str(datetime.now()) + "\n")
             wait_time = 1 - r.elapsed.microseconds / 1000000.0
         except Exception as e:
             timeout = 1
@@ -75,6 +80,7 @@ def do_check(endpoint, address, token):
             print e
 
         message = ('service_response,service_name=' + endpoint +
+            ',address=' + address +
             ' status_code=' + str(r.status_code) + ',timeout=' +
             str(timeout) + ',value=' + str(r.elapsed.microseconds))
         influx_resp = requests.post(
@@ -111,7 +117,6 @@ def ping(address):
             total = re.search('(?<=loss, time )\d+', response)
             total_time = total.group(0)
             exit_code = '0'
-        #except subprocess.CalledProcessError:
         except:
             exit_code = '1'
             packet_loss = '100'
@@ -125,13 +130,11 @@ def ping(address):
         print "Influx: " + str(influx_resp.status_code) + "\n"
 
 def parse_endpoints(services):
-    endpoints = dict()
-    service_to_track = ('compute', 'image', 'network', 'volume')
+    endpoints = []
     for service in services:
-        if service['type'] in service_to_track:
-            url = urlparse(service['endpoints'][0]['url'])
-            endpoints[service['type']] = "http://" + url.hostname + ":" + str(
-                url.port) + "/"
+        url = urlparse(service['endpoints'][0]['url'])
+        host = "http://" + url.hostname + ":" + str(url.port) + "/"
+        endpoints.append((service['name'], host))
     return endpoints
 
 
