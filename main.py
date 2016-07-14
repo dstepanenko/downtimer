@@ -1,4 +1,3 @@
-from datetime import datetime
 import json
 import subprocess
 import re
@@ -6,10 +5,45 @@ import requests
 import time
 import threading
 
+import ConfigParser
+
+from datetime import datetime
 from urlparse import urlparse
 
+def parse_config():
+    CONF = ConfigParser.ConfigParser()
+    CONF.read("conf.ini")
+    #all this variables will become properties of the class
+    #as soon as downtimer will be daemonized
+    global host, port, db_host, db_port
+    try:
+        host = CONF.get('global', 'keystone_endpoint')
+    except:
+        host = "127.0.0.1"
+
+    try:
+        port = CONF.get('global', 'keystone_port')
+    except:
+        port = "5000"
+
+    try:
+        db_host = CONF.get('db', 'host')
+    except:
+        db_host = None
+
+    try:
+        db_port = CONF.get('db', 'port')
+    except:
+        db_port = None
 
 def main():
+    parse_config()
+    global db_url
+    db_url = 'http://{host}:{port}/write?db=endpoints'.format(
+        host=db_host,
+        port=db_port
+    )
+
     data = {
         "auth": {
             "scope": {
@@ -37,7 +71,8 @@ def main():
         }
     }
     data = json.dumps(data)
-    r = requests.post('http://172.29.236.10:5000/v3/auth/tokens', data)
+    url = 'http://{host}:{port}/v3/auth/tokens'.format(host=host, port=port)
+    r = requests.post(url, data)
     result = r.json()
 
     services = result['token']['catalog']
@@ -84,7 +119,7 @@ def do_check(endpoint, address, token):
             ' status_code=' + str(r.status_code) + ',timeout=' +
             str(timeout) + ',value=' + str(r.elapsed.microseconds))
         influx_resp = requests.post(
-            'http://monit-ent.vm.mirantis.net:8086/write?db=endpoints',
+            db_url,
             message)
         print "Influx: " + str(influx_resp.status_code) + "\n"
         time.sleep(wait_time)
@@ -125,7 +160,7 @@ def ping(address):
         message = ('floating_ip_pings,address=' + address + ' total_time=' + total_time +
                    ',exit_code=' + exit_code + ',value=' + packet_loss)
         influx_resp = requests.post(
-            'http://monit-ent.vm.mirantis.net:8086/write?db=endpoints',
+            db_url,
             message)
         print "Influx: " + str(influx_resp.status_code) + "\n"
 
