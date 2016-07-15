@@ -1,7 +1,20 @@
 from influxdb import InfluxDBClient
+import ConfigParser
+
+CONF = ConfigParser.ConfigParser()
+CONF.read("conf.ini")
+try:
+    db_host = CONF.get('db', 'host')
+except:
+    db_host = None
+
+try:
+    db_port = CONF.get('db', 'port')
+except:
+    db_port = None
 
 service_to_track = ('compute', 'image', 'network', 'volume')
-client = InfluxDBClient('172.18.160.72', 8086, database='endpoints')
+client = InfluxDBClient(db_host, db_port, database='endpoints')
 #res = client.query('select count(value) from services;')
 total_srv = client.query('select count(value) from service_response group by service_name;')
 bad_srv = client.query('select count(value) from service_response where status_code <> 200'
