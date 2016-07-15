@@ -13,12 +13,17 @@ try:
 except:
     db_port = None
 
-service_to_track = ('compute', 'image', 'network', 'volume')
 client = InfluxDBClient(db_host, db_port, database='endpoints')
 #res = client.query('select count(value) from services;')
-total_srv = client.query('select count(value) from service_response group by service_name;')
-bad_srv = client.query('select count(value) from service_response where status_code <> 200'
-                       ' and status_code <> 300 group by service_name;')
+services_ref = client.query('show tag values from service_response '
+                                'with key = service_name')
+service_to_track = [x['value'] for x in services_ref[('service_response', None)]]
+
+total_srv = client.query('select count(value) from service_response '
+                         'group by service_name;')
+bad_srv = client.query('select count(value) from service_response where '
+                       'status_code <> 200 and status_code <> 300 '
+                       'group by service_name;')
 
 for service in service_to_track:
     key = ('service_response', {'service_name': service})
@@ -39,13 +44,15 @@ for service in service_to_track:
            "%% of total uptime" %
            (service, srv_downtime, (100.0 * srv_downtime) / total_uptime))
 
-tags_resp = client.query('show tag values from floating_ip_pings with key=address;')
+tags_resp = client.query('show tag values from floating_ip_pings '
+                         'with key=address;')
 addresses = [item['value'] for item in tags_resp[(u'floating_ip_pings', None)]]
-total_ping = client.query('select count(value) from floating_ip_pings group by address;')
-bad_ping_exit_code = client.query('select count(value) from floating_ip_pings where exit_code <> 0'
-                       'group by address;')
-partially_lost_ping = client.query('select sum(value) from floating_ip_pings where exit_code = 0'
-                       'group by address;')
+total_ping = client.query('select count(value) from floating_ip_pings '
+                          'group by address;')
+bad_ping_exit_code = client.query('select count(value) from floating_ip_pings '
+                                  'where exit_code <> 0 group by address;')
+partially_lost_ping = client.query('select sum(value) from floating_ip_pings '
+                                   'where exit_code = 0 group by address;')
 
 for address in addresses:
     key = ('floating_ip_pings', {'address': address})
