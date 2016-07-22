@@ -1,108 +1,75 @@
-import json
 import subprocess
 import re
 import requests
 import time
 import threading
 
+from keystoneauth1 import session
+from keystoneclient.v3 import client as keystone_client
+from keystoneauth1.identity import Password
+from neutronclient.v2_0 import client as neutron_client
+
 import ConfigParser
 
 from datetime import datetime
 from urlparse import urlparse
 
-def parse_config():
-    CONF = ConfigParser.ConfigParser()
-    CONF.read("conf.ini")
-    #all this variables will become properties of the class
-    #as soon as downtimer will be daemonized
-    global host, port, db_host, db_port
-    try:
-        host = CONF.get('global', 'keystone_endpoint')
-    except:
-        host = "127.0.0.1"
-
-    try:
-        port = CONF.get('global', 'keystone_port')
-    except:
-        port = "5000"
-
-    try:
-        db_host = CONF.get('db', 'host')
-    except:
-        db_host = None
-
-    try:
-        db_port = CONF.get('db', 'port')
-    except:
-        db_port = None
-
-def main():
-    parse_config()
-    global db_url
-    db_url = 'http://{host}:{port}/write?db=endpoints'.format(
-        host=db_host,
-        port=db_port
-    )
-
-    data = {
-        "auth": {
-            "scope": {
-                "project": {
-                    "domain": {
-                        "id": "default"
-                    },
-                    "name": "admin"
-                }
-            },
-            "identity": {
-                "password": {
-                    "user": {
-                        "domain": {
-                            "id": "default"
-                        },
-                        "password": "secret",
-                        "name": "admin"
-                    }
-                },
-                "methods": [
-                    "password"
-                ]
-            }
-        }
-    }
-    data = json.dumps(data)
-    url = 'http://{host}:{port}/v3/auth/tokens'.format(host=host, port=port)
-    r = requests.post(url, data)
-    result = r.json()
-
-    services = result['token']['catalog']
-    token = r.headers['X-Subject-Token']
-    endpoints = parse_endpoints(services)
-    floating_ips = get_floating_ips(services, token)
-    for ip in floating_ips:
-        worker = threading.Thread(target=ping,
-                                  args=(ip,))
-        worker.daemon = True
-        worker.start()
-
-    print(endpoints)
-    print token
-    for endpoint, address in endpoints:
-        worker = threading.Thread(target=do_check,
-                                  args=(endpoint, address, token))
-        worker.daemon = True
-        worker.start()
-
-
 SERVICE_TIMEOUT = 0.9
 
 
-def do_check(endpoint, address, token):
+class Config:
+    def __init__(self, file_name):
+        conf = ConfigParser.ConfigParser()
+        conf.read("conf.ini")
+
+        self.auth_url = conf.get('global', 'keystone_endpoint')
+        self.os_user = conf.get('global', 'user')
+        self.os_pass = conf.get('global', 'password')
+
+        self.db_host = conf.get('db', 'host')
+        self.db_port = conf.get('db', 'port')
+
+
+class Downtimer:
+    def __init__(self, conf_file='conf.ini'):
+        self.conf = Config(conf_file)
+        self.db_url = 'http://{host}:{port}/write?db=endpoints'.format(
+            host=self.conf.db_host,
+            port=self.conf.db_port
+        )
+        self.threads = []
+
+    def main(self):
+        auth = Password(auth_url=self.conf.auth_url, username=self.conf.os_user,
+                        password=self.conf.os_pass, project_name="admin",
+                        user_domain_id="default", project_domain_id="default")
+        sess = session.Session(auth=auth)
+        keystone = keystone_client.Client(session=sess)
+        for service in keystone.services.list():
+            endpoint = keystone.endpoints.find(service_id=service.id,
+                                               interface='public')
+            url = urlparse(endpoint.url)
+            new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            self.add_worker(do_check, (service.name, new_url, self.db_url))
+
+        neutron = neutron_client.Client(session=sess)
+        for fip in neutron.list_floatingips()['floatingips']:
+            if fip['status'] == 'ACTIVE':
+                self.add_worker(ping, (fip['floating_ip_address'], self.db_url))
+
+    def add_worker(self, target, args):
+        worker = threading.Thread(target=target,
+                                  args=args)
+        worker.daemon = True
+        worker.start()
+        self.threads.append(worker)
+
+
+def do_check(endpoint, address, db_url):
     while True:
         try:
             timeout = 0
-            headers = {'X-Auth-Token': token}
-            r = requests.get(address, headers=headers, timeout=SERVICE_TIMEOUT)
+            r = requests.get(address, timeout=SERVICE_TIMEOUT)
             status_msg = 'FAIL'
             if r.status_code in [200, 300]:
                 status_msg = 'OK'
@@ -123,23 +90,9 @@ def do_check(endpoint, address, token):
             message)
         print "Influx: " + str(influx_resp.status_code) + "\n"
         time.sleep(wait_time)
-
-def get_floating_ips(services, token):
-    url = None
-    for service in services:
-        if service['type'] == 'compute':
-            url = service['endpoints'][0]['url']+ '/os-floating-ips'
-    if url is None:
-        raise Exception("No compute found!")
-    headers = {'X-Auth-Token': token}
-    resp = requests.get(url, headers=headers)
-    ips = resp.json()
-    result = [ip['ip'] for ip in ips['floating_ips']
-              if ip['instance_id'] != None]
-    return result
     
     
-def ping(address):
+def ping(address, db_url):
     while True:
         try:
             response = subprocess.check_output(
@@ -164,16 +117,8 @@ def ping(address):
             message)
         print "Influx: " + str(influx_resp.status_code) + "\n"
 
-def parse_endpoints(services):
-    endpoints = []
-    for service in services:
-        url = urlparse(service['endpoints'][0]['url'])
-        host = "http://" + url.hostname + ":" + str(url.port) + "/"
-        endpoints.append((service['name'], host))
-    return endpoints
-
 
 if __name__ == "__main__":
-    main()
+    Downtimer().main()
     while True:
         time.sleep(3)
