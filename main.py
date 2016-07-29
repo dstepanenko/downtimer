@@ -1,17 +1,17 @@
-import subprocess
+import ConfigParser
+import logging
 import re
 import requests
+import subprocess
 import time
 import threading
 
+from daemon import runner
+from datetime import datetime
 from keystoneauth1 import session
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1.identity import Password
 from neutronclient.v2_0 import client as neutron_client
-
-import ConfigParser
-
-from datetime import datetime
 from urlparse import urlparse
 
 SERVICE_TIMEOUT = 0.9
@@ -32,6 +32,12 @@ class Config:
 
 class Downtimer:
     def __init__(self, conf_file='conf.ini'):
+        #  All these paths should be defined for using python-daemon runner
+        self.stdin_path = '/dev/null'
+        self.stdout_path = '/var/log/downtimer_output'
+        self.stderr_path = '/dev/tty'
+        self.pidfile_path =  '/var/run/downtimer.pid'
+        self.pidfile_timeout = 5
         self.conf = Config(conf_file)
         self.db_url = 'http://{host}:{port}/write?db=endpoints'.format(
             host=self.conf.db_host,
@@ -39,7 +45,7 @@ class Downtimer:
         )
         self.threads = []
 
-    def main(self):
+    def run(self):
         auth = Password(auth_url=self.conf.auth_url, username=self.conf.os_user,
                         password=self.conf.os_pass, project_name="admin",
                         user_domain_id="default", project_domain_id="default")
@@ -56,6 +62,9 @@ class Downtimer:
         for fip in neutron.list_floatingips()['floatingips']:
             if fip['status'] == 'ACTIVE':
                 self.add_worker(ping, (fip['floating_ip_address'], self.db_url))
+
+        while True:
+            time.sleep(3)
 
     def add_worker(self, target, args):
         worker = threading.Thread(target=target,
@@ -118,7 +127,14 @@ def ping(address, db_url):
         print "Influx: " + str(influx_resp.status_code) + "\n"
 
 
-if __name__ == "__main__":
-    Downtimer().main()
-    while True:
-        time.sleep(3)
+logger = logging.getLogger("Downtimer")
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler = logging.FileHandler("/var/log/downtimer.log")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+downtimer_app = Downtimer()
+daemon_runner = runner.DaemonRunner(downtimer_app)
+daemon_runner.daemon_context.files_preserve=[handler.stream]
+daemon_runner.do_action()
