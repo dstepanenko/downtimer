@@ -16,7 +16,7 @@ from neutronclient.v2_0 import client as neutron_client
 from urlparse import urlparse
 
 SERVICE_TIMEOUT = 0.9
-
+CONFIG_FILE = "/etc/downtimer/conf.ini"
 
 class Daemon(runner.DaemonRunner):
     def _start(self):
@@ -43,7 +43,7 @@ class Daemon(runner.DaemonRunner):
 class Config:
     def __init__(self, file_name):
         conf = ConfigParser.ConfigParser()
-        conf.read("conf.ini")
+        conf.read(CONFIG_FILE)
 
         self.auth_url = conf.get('global', 'keystone_endpoint')
         self.os_user = conf.get('global', 'user')
