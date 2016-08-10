@@ -1,4 +1,4 @@
-from db import InfluxDBAdapter
+from db_adapters import InfluxDBAdapter
 from main import Config
 
 adapter = InfluxDBAdapter(Config('conf.ini'))

@@ -14,7 +14,7 @@ from neutronclient.v2_0 import client as neutron_client
 
 from datetime import datetime
 from urlparse import urlparse
-from db import InfluxDBAdapter
+from db_adapters import InfluxDBAdapter
 
 SERVICE_TIMEOUT = 0.9
 CONFIG_FILE = "/etc/downtimer/conf.ini"
