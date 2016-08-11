@@ -6,6 +6,8 @@ import subprocess
 import time
 import threading
 
+import db_adapters
+
 from daemon import runner
 from keystoneauth1 import session
 from keystoneclient.v3 import client as keystone_client
@@ -14,7 +16,6 @@ from neutronclient.v2_0 import client as neutron_client
 
 from datetime import datetime
 from urlparse import urlparse
-from db_adapters import InfluxDBAdapter
 
 SERVICE_TIMEOUT = 0.9
 CONFIG_FILE = "/etc/downtimer/conf.ini"
@@ -53,6 +54,7 @@ class Config(object):
 
         self.db_host = conf.get('db', 'host')
         self.db_port = conf.get('db', 'port')
+        self.db_adapter = conf.get('db', 'adapter')
 
 
 class Downtimer(object):
@@ -64,7 +66,10 @@ class Downtimer(object):
         self.pidfile_path =  '/var/run/downtimer.pid'
         self.pidfile_timeout = 5
         self.conf = Config(conf_file)
-        self.db_adapter = InfluxDBAdapter(self.conf)
+        if self.conf.db_adapter == 'influx':
+            self.db_adapter = db_adapters.InfluxDBAdapter(self.conf)
+        else
+            self.db_adapter = db_adapters.SQLDBAdapter(self.conf)
         self.threads = []
 
     def run(self):

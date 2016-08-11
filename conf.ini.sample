@@ -4,5 +4,6 @@ user=admin
 password=secret
 report_file=/var/log/downtimer.report
 [db]
-host=monit-ent.vm.mirantis.net
+adapter=sql
+host=sqlite:///downtimer.db
 port=8086
