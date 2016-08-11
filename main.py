@@ -107,11 +107,11 @@ class Downtimer(object):
                          (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
 
-            for address in adapter.get_instance_statuses():
+            for instance in adapter.get_instance_statuses():
                 f.write("Address %s was unreachable approximately %.1f second "
                         "which are %.1f %% of total uptime\n" %
-                        (address['address'], address['failed'],
-                         (100.0 * address['failed']) / address['total_time']))
+                        (instance['address'], instance['lost_pkts'],
+                         (instance['lost_pkts'] * 100.0) / instance['attempts']))
 
 
 def do_check(endpoint, address, db_adapter):

@@ -50,7 +50,7 @@ class InfluxDBAdapter(DBAdapter):
         total_ping = self.client.query('select count(value) from '
                                        'floating_ip_pings group by address;')
         bad_ping_exit_code = self.client.query(
-            'select count(value) from floating_ip_pings '
+            'select sum(value) from floating_ip_pings '
             'where exit_code <> 0 group by address;')
         partially_lost_ping = self.client.query(
             'select sum(value) from floating_ip_pings '
@@ -62,27 +62,27 @@ class InfluxDBAdapter(DBAdapter):
             key = ('floating_ip_pings', {'address': address})
             try:
                 value = total_ping[key].next()
-                total_time = value['count']
+                pkts_total = value['count']
             except:
                 self.logger.warn("There's no records about address", address)
                 continue
 
             try:
                 value = bad_ping_exit_code[key].next()
-                failed_ping = value['count']
+                failed_ping = value['sum']
             except:
                 failed_ping = 0
 
             try:
                 value = partially_lost_ping[key].next()
-                lost_ping = value['sum'] * 0.05
+                lost_ping = value['sum']
             except:
                 lost_ping = 0
 
-            failed = failed_ping + lost_ping
+            failed = (failed_ping + lost_ping) / 100.0
 
-            statuses.append({'address': address, 'failed': failed,
-                             'total_time': total_time})
+            statuses.append({'address': address, 'lost_pkts': failed,
+                             'attempts': pkts_total})
 
         return statuses
 
