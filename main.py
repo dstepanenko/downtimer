@@ -68,7 +68,7 @@ class Downtimer(object):
         self.conf = Config(conf_file)
         if self.conf.db_adapter == 'influx':
             self.db_adapter = db_adapters.InfluxDBAdapter(self.conf)
-        else
+        else:
             self.db_adapter = db_adapters.SQLDBAdapter(self.conf)
         self.threads = []
 
@@ -103,16 +103,14 @@ class Downtimer(object):
 
     def report(self):
         with open(self.conf.report_file, "w") as f:
-            adapter = InfluxDBAdapter(self.conf)
-
-            for service in adapter.get_service_statuses():
+            for service in self.db_adapter.get_service_statuses():
                 f.write("Service %s was down approximately %d seconds which "
                         "are %.1f%% of total uptime\n" %
                         (service['service'], service['srv_downtime'],
                          (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
 
-            for instance in adapter.get_instance_statuses():
+            for instance in self.db_adapter.get_instance_statuses():
                 f.write("Address %s was unreachable approximately %.1f second "
                         "which are %.1f %% of total uptime\n" %
                         (instance['address'], instance['lost_pkts'],

@@ -1,5 +1,8 @@
 import sqlalchemy as sa
+from oslo_utils import uuidutils
+from sqlalchemy import create_engine
 from sqlalchemy import orm
+from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
@@ -13,7 +16,7 @@ class HasId(object):
 class Service(Base, HasId):
     __tablename__ = 'services'
 
-    name = sa.Column(sa.String(255))
+    endpoint = sa.Column(sa.String(255))
     address = sa.Column(sa.String(255))
     status_code = sa.Column(sa.Integer)
     timeout = sa.Column(sa.Float)
@@ -26,4 +29,7 @@ class Instance(Base, HasId):
     address = sa.Column(sa.String(255))
     total_time = sa.Column(sa.Float)
     exit_code = sa.Column(sa.Integer)
-    packet_loss = = sa.Column(sa.Float)
+    packet_loss = sa.Column(sa.Float)
+
+engine = create_engine('sqlite:///downtimer.db')
+Base.metadata.create_all(engine)
