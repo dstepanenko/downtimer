@@ -1,108 +1,128 @@
-import json
-import subprocess
+import ConfigParser
+import logging
 import re
 import requests
+import subprocess
 import time
 import threading
 
-import ConfigParser
+import db_adapters
+
+from daemon import runner
+from keystoneauth1 import session
+from keystoneclient.v3 import client as keystone_client
+from keystoneauth1.identity import Password
+from neutronclient.v2_0 import client as neutron_client
 
 from datetime import datetime
 from urlparse import urlparse
-
-def parse_config():
-    CONF = ConfigParser.ConfigParser()
-    CONF.read("conf.ini")
-    #all this variables will become properties of the class
-    #as soon as downtimer will be daemonized
-    global host, port, db_host, db_port
-    try:
-        host = CONF.get('global', 'keystone_endpoint')
-    except:
-        host = "127.0.0.1"
-
-    try:
-        port = CONF.get('global', 'keystone_port')
-    except:
-        port = "5000"
-
-    try:
-        db_host = CONF.get('db', 'host')
-    except:
-        db_host = None
-
-    try:
-        db_port = CONF.get('db', 'port')
-    except:
-        db_port = None
-
-def main():
-    parse_config()
-    global db_url
-    db_url = 'http://{host}:{port}/write?db=endpoints'.format(
-        host=db_host,
-        port=db_port
-    )
-
-    data = {
-        "auth": {
-            "scope": {
-                "project": {
-                    "domain": {
-                        "id": "default"
-                    },
-                    "name": "admin"
-                }
-            },
-            "identity": {
-                "password": {
-                    "user": {
-                        "domain": {
-                            "id": "default"
-                        },
-                        "password": "secret",
-                        "name": "admin"
-                    }
-                },
-                "methods": [
-                    "password"
-                ]
-            }
-        }
-    }
-    data = json.dumps(data)
-    url = 'http://{host}:{port}/v3/auth/tokens'.format(host=host, port=port)
-    r = requests.post(url, data)
-    result = r.json()
-
-    services = result['token']['catalog']
-    token = r.headers['X-Subject-Token']
-    endpoints = parse_endpoints(services)
-    floating_ips = get_floating_ips(services, token)
-    for ip in floating_ips:
-        worker = threading.Thread(target=ping,
-                                  args=(ip,))
-        worker.daemon = True
-        worker.start()
-
-    print(endpoints)
-    print token
-    for endpoint, address in endpoints:
-        worker = threading.Thread(target=do_check,
-                                  args=(endpoint, address, token))
-        worker.daemon = True
-        worker.start()
-
+from db import InfluxDBAdapter
 
 SERVICE_TIMEOUT = 0.9
+CONFIG_FILE = "/etc/downtimer/conf.ini"
+
+class Daemon(runner.DaemonRunner):
+    def _start(self):
+        super(Daemon, self)._start()
+
+    def _stop(self):
+        self._report()
+        super(Daemon, self)._stop()
+
+    def _restart(self):
+        super(Daemon, self)._restart()
+
+    def _report(self):
+        self.app.report()
+
+    action_funcs = {
+        'start': _start,
+        'stop': _stop,
+        'restart': _restart,
+        'report': _report
+        }
 
 
-def do_check(endpoint, address, token):
+class Config(object):
+    def __init__(self, file_name):
+        conf = ConfigParser.ConfigParser()
+        conf.read(CONFIG_FILE)
+
+        self.auth_url = conf.get('global', 'keystone_endpoint')
+        self.os_user = conf.get('global', 'user')
+        self.os_pass = conf.get('global', 'password')
+        self.report_file = conf.get('global', 'report_file')
+
+        self.db_host = conf.get('db', 'host')
+        self.db_port = conf.get('db', 'port')
+        self.db_adapter = conf.get('db', 'adapter')
+
+
+class Downtimer(object):
+    def __init__(self, conf_file='conf.ini'):
+        #  All these paths should be defined for using python-daemon runner
+        self.stdin_path = '/dev/null'
+        self.stdout_path = '/var/log/downtimer_output'
+        self.stderr_path = '/dev/tty'
+        self.pidfile_path =  '/var/run/downtimer.pid'
+        self.pidfile_timeout = 5
+        self.conf = Config(conf_file)
+        if self.conf.db_adapter == 'influx':
+            self.db_adapter = db_adapters.InfluxDBAdapter(self.conf)
+        else:
+            self.db_adapter = db_adapters.SQLDBAdapter(self.conf)
+        self.threads = []
+
+    def run(self):
+        auth = Password(auth_url=self.conf.auth_url, username=self.conf.os_user,
+                        password=self.conf.os_pass, project_name="admin",
+                        user_domain_id="default", project_domain_id="default")
+        sess = session.Session(auth=auth)
+        keystone = keystone_client.Client(session=sess)
+        for service in keystone.services.list():
+            endpoint = keystone.endpoints.find(service_id=service.id,
+                                               interface='public')
+            url = urlparse(endpoint.url)
+            new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            self.add_worker(do_check, (service.name, new_url, self.db_adapter))
+
+        neutron = neutron_client.Client(session=sess)
+        for fip in neutron.list_floatingips()['floatingips']:
+            if fip['status'] == 'ACTIVE':
+                self.add_worker(ping, (fip['floating_ip_address'],
+                                       self.db_adapter))
+
+        while True:
+            time.sleep(3)
+
+    def add_worker(self, target, args):
+        worker = threading.Thread(target=target,
+                                  args=args)
+        worker.daemon = True
+        worker.start()
+        self.threads.append(worker)
+
+    def report(self):
+        with open(self.conf.report_file, "w") as f:
+            for service in self.db_adapter.get_service_statuses():
+                f.write("Service %s was down approximately %d seconds which "
+                        "are %.1f%% of total uptime\n" %
+                        (service['service'], service['srv_downtime'],
+                         (100.0 * service['srv_downtime']) /
+                         service['total_uptime']))
+
+            for instance in self.db_adapter.get_instance_statuses():
+                f.write("Address %s was unreachable approximately %.1f second "
+                        "which are %.1f %% of total uptime\n" %
+                        (instance['address'], instance['lost_pkts'],
+                         (instance['lost_pkts'] * 100.0) / instance['attempts']))
+
+
+def do_check(endpoint, address, db_adapter):
     while True:
         try:
             timeout = 0
-            headers = {'X-Auth-Token': token}
-            r = requests.get(address, headers=headers, timeout=SERVICE_TIMEOUT)
+            r = requests.get(address, timeout=SERVICE_TIMEOUT)
             status_msg = 'FAIL'
             if r.status_code in [200, 300]:
                 status_msg = 'OK'
@@ -114,32 +134,13 @@ def do_check(endpoint, address, token):
             wait_time = 1 - SERVICE_TIMEOUT
             print e
 
-        message = ('service_response,service_name=' + endpoint +
-            ',address=' + address +
-            ' status_code=' + str(r.status_code) + ',timeout=' +
-            str(timeout) + ',value=' + str(r.elapsed.microseconds))
-        influx_resp = requests.post(
-            db_url,
-            message)
-        print "Influx: " + str(influx_resp.status_code) + "\n"
-        time.sleep(wait_time)
+        db_adapter.store_service_status(endpoint, address, r.status_code,
+                                        timeout, r.elapsed.microseconds)
 
-def get_floating_ips(services, token):
-    url = None
-    for service in services:
-        if service['type'] == 'compute':
-            url = service['endpoints'][0]['url']+ '/os-floating-ips'
-    if url is None:
-        raise Exception("No compute found!")
-    headers = {'X-Auth-Token': token}
-    resp = requests.get(url, headers=headers)
-    ips = resp.json()
-    result = [ip['ip'] for ip in ips['floating_ips']
-              if ip['instance_id'] != None]
-    return result
+        time.sleep(wait_time)
     
     
-def ping(address):
+def ping(address, db_adapter):
     while True:
         try:
             response = subprocess.check_output(
@@ -157,23 +158,18 @@ def ping(address):
             packet_loss = '100'
             total_time = '2000'
         print 'ttt = %s loss = %s code = %s' % (total_time, packet_loss, exit_code)
-        message = ('floating_ip_pings,address=' + address + ' total_time=' + total_time +
-                   ',exit_code=' + exit_code + ',value=' + packet_loss)
-        influx_resp = requests.post(
-            db_url,
-            message)
-        print "Influx: " + str(influx_resp.status_code) + "\n"
 
-def parse_endpoints(services):
-    endpoints = []
-    for service in services:
-        url = urlparse(service['endpoints'][0]['url'])
-        host = "http://" + url.hostname + ":" + str(url.port) + "/"
-        endpoints.append((service['name'], host))
-    return endpoints
+        db_adapter.store_instance_status(address, total_time, exit_code, packet_loss)
 
 
-if __name__ == "__main__":
-    main()
-    while True:
-        time.sleep(3)
+logger = logging.getLogger("Downtimer")
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler = logging.FileHandler("/var/log/downtimer.log")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+downtimer_app = Downtimer()
+daemon_runner = Daemon(downtimer_app)
+daemon_runner.daemon_context.files_preserve=[handler.stream]
+daemon_runner.do_action()

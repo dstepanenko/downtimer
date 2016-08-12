@@ -1,0 +1,10 @@
+[global]
+keystone_endpoint=http://172.29.236.10:5000
+user=admin
+password=secret
+report_file=/var/log/downtimer.report
+[db]
+adapter=sql
+host=sqlite:///downtimer.db
+#host=monit-ent.vm.mirantis.net
+port=8086
