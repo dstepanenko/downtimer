@@ -7,6 +7,7 @@ import time
 import threading
 
 from daemon import runner
+from datetime import datetime
 from keystoneauth1 import session
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1.identity import Password
@@ -16,8 +17,12 @@ from datetime import datetime
 from urlparse import urlparse
 from db_adapters import InfluxDBAdapter
 
+from db_adapters import InfluxDBAdapter, SQLDBAdapter
+
 SERVICE_TIMEOUT = 0.9
 CONFIG_FILE = "/etc/downtimer/conf.ini"
+adapters = {'influx': InfluxDBAdapter, 'sql': SQLDBAdapter}
+
 
 class Daemon(runner.DaemonRunner):
     def _start(self):
@@ -53,6 +58,7 @@ class Config(object):
 
         self.db_host = conf.get('db', 'host')
         self.db_port = conf.get('db', 'port')
+        self.db_adapter = conf.get('db', 'adapter')
 
 
 class Downtimer(object):
@@ -64,7 +70,7 @@ class Downtimer(object):
         self.pidfile_path =  '/var/run/downtimer.pid'
         self.pidfile_timeout = 5
         self.conf = Config(conf_file)
-        self.db_adapter = InfluxDBAdapter(self.conf)
+        self.db_adapter = adapters[self.conf.db_adapter](self.conf)
         self.threads = []
 
     def run(self):
@@ -98,16 +104,14 @@ class Downtimer(object):
 
     def report(self):
         with open(self.conf.report_file, "w") as f:
-            adapter = InfluxDBAdapter(self.conf)
-
-            for service in adapter.get_service_statuses():
+            for service in self.db_adapter.get_service_statuses():
                 f.write("Service %s was down approximately %d seconds which "
                         "are %.1f%% of total uptime\n" %
                         (service['service'], service['srv_downtime'],
                          (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
 
-            for instance in adapter.get_instance_statuses():
+            for instance in self.db_adapter.get_instance_statuses():
                 f.write("Address %s was unreachable approximately %.1f second "
                         "which are %.1f %% of total uptime\n" %
                         (instance['address'], instance['lost_pkts'],

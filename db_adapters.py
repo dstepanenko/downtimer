@@ -1,4 +1,8 @@
 from influxdb import InfluxDBClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from db.models import Base, Service, Instance
 import requests
 import logging
 
@@ -122,3 +126,65 @@ class InfluxDBAdapter(DBAdapter):
                              'total_uptime':total_uptime})
 
         return services
+
+
+class SQLDBAdapter(DBAdapter):
+    def __init__(self, config):
+        self.logger = logging.getLogger('SQLDBAdapter')
+        self.engine = create_engine(config.db_host)
+        Base.metadata.bind = self.engine
+        self.DBSession = sessionmaker()
+        self.DBSession.bind = self.engine
+
+    def store_instance_status(self, address, total_time, exit_code,
+                              packet_loss):
+        instance = Instance(address=address,
+                            total_time=total_time,
+                            exit_code=exit_code,
+                            packet_loss=packet_loss)
+        session = self.DBSession()
+        session.add(instance)
+        session.commit()
+
+    def store_service_status(self, endpoint, address, status_code, timeout,
+                             elapsed_time):
+        service = Service(endpoint=endpoint,
+                          address=address,
+                          status_code=status_code,
+                          timeout=timeout,
+                          elapsed_time=elapsed_time)
+        session = self.DBSession()
+        session.add(service)
+        session.commit()
+
+    def get_instance_statuses(self):
+        session = self.DBSession()
+        instance_data = session.query(Instance).all()
+        data = {}
+        for instance in instance_data:
+            if instance.address in data:
+                record = data[instance.address]
+                record['lost_pkts'] += instance.packet_loss / 100.0
+                record['attempts'] += 1
+            else:
+                data[instance.address] = {'address': instance.address,
+                                          'lost_pkts': instance.packet_loss / 100.0,
+                                          'attempts': 1}
+        return list(data.values())
+
+    def get_service_statuses(self):
+        session = self.DBSession()
+        service_data = session.query(Service).all()
+        data = {}
+        for service in service_data:
+            if service.endpoint in data:
+                record = data[service.endpoint]
+                if service.status_code not in (200, 300):
+                    record['srv_downtime'] += 1
+                record['total_uptime'] += 1
+            else:
+                srv_downtime = 0 if service.status_code in (200, 300) else 1
+                data[service.endpoint] = {'service': service.endpoint,
+                                          'srv_downtime': srv_downtime,
+                                          'total_uptime': 1}
+        return list(data.values())
