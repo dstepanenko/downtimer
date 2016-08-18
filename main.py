@@ -128,15 +128,22 @@ def do_check(endpoint, address, db_adapter):
                 status_msg = 'OK'
             print (endpoint + " " + address + ": " + str(r.status_code) + " "
                    + status_msg + " " + str(datetime.now()) + "\n")
-            wait_time = 1 - r.elapsed.microseconds / 1000000.0
-        except Exception as e:
+            elapsed = r.elapsed.microseconds
+            status_code = r.status_code
+        except requests.exceptions.RequestException as e:
             timeout = 1
-            wait_time = 1 - SERVICE_TIMEOUT
+            elapsed = SERVICE_TIMEOUT * 1e6
+            status_code = 408
             print e
+        except Exception as e:
+            print ("This situation should\'t have occured. Failed to check "
+                   "address {} with exception {}".format(address, e.message))
+            raise e
 
-        db_adapter.store_service_status(endpoint, address, r.status_code,
-                                        timeout, r.elapsed.microseconds)
+        db_adapter.store_service_status(endpoint, address, status_code,
+                                        timeout, elapsed)
 
+        wait_time = 1 - elapsed * 1e-6
         time.sleep(wait_time)
     
     
