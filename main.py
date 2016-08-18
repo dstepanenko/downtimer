@@ -161,15 +161,15 @@ def ping(address, db_adapter):
 
         db_adapter.store_instance_status(address, total_time, exit_code, packet_loss)
 
+if __name__ == "__main__":
+    logger = logging.getLogger("Downtimer")
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    handler = logging.FileHandler("/var/log/downtimer.log")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
-logger = logging.getLogger("Downtimer")
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler = logging.FileHandler("/var/log/downtimer.log")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-downtimer_app = Downtimer()
-daemon_runner = Daemon(downtimer_app)
-daemon_runner.daemon_context.files_preserve=[handler.stream]
-daemon_runner.do_action()
+    downtimer_app = Downtimer()
+    daemon_runner = Daemon(downtimer_app)
+    daemon_runner.daemon_context.files_preserve=[handler.stream]
+    daemon_runner.do_action()
