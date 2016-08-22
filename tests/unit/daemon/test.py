@@ -84,7 +84,7 @@ class DowntimerTest(unittest.TestCase):
         fake_host = '1.2.3.4'
         fake_port = '321'
         fake_keystone_ep = mock.Mock(
-            url='https://{}:{}'.format(fake_host, fake_port)
+            url='http://{}:{}/'.format(fake_host, fake_port)
         )
         
         mock_sleep.side_effect = raise_exc
@@ -103,13 +103,36 @@ class DowntimerTest(unittest.TestCase):
             downtimer.run()
         except Exception as e:
             self.assertEqual(EXCEPTION_MESSAGE, e.message)
-        good_neutron_ips = [ip for ip in fake_neutron_list_ips
-                            if ip['status'] == 'ACTIVE']
-        expected_calls_count = (len(fake_keystone_services_list)
-                                + len(good_neutron_ips))
         calls = downtimer.add_worker.mock_calls
-        self.assertEqual(expected_calls_count, len(calls))
-        
+        expected_check_arg_list = []
+        expected_ping_arg_list = []
+        for call in calls:
+            call_params_list = [y for y in call]
+            func, args = call_params_list[1]
+            if func.__name__ == 'do_check':
+                expected_check_arg_list.append(args)
+            if func.__name__ == 'ping':
+                expected_ping_arg_list.append(args)
+            else:
+                assert(False, 'Unknown called function type')
+
+        real_check_arg_list = []
+        for service in fake_keystone_services_list:
+            real_check_arg_list.append(
+                (service.name, fake_keystone_ep.url, downtimer.db_adapter)
+            )
+        real_ping_arg_list = []
+        for fip in fake_neutron_list_ips:
+            if fip['status'] == 'ACTIVE':
+                real_ping_arg_list.append(
+                    (fip['floating_ip_address'], downtimer.db_adapter)
+                )
+
+        self.assertEqual(len(expected_check_arg_list), len(real_check_arg_list))
+        self.assertEqual(set(expected_check_arg_list), set(real_check_arg_list))
+        self.assertEqual(len(expected_ping_arg_list), len(real_ping_arg_list))
+        self.assertEqual(set(expected_ping_arg_list), set(real_ping_arg_list))
+
 
 class DowntimerPingTest(unittest.TestCase):
 
