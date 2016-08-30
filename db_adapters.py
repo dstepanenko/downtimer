@@ -122,8 +122,8 @@ class InfluxDBAdapter(DBAdapter):
             except:
                 srv_downtime = 0
 
-            services.append({'service':service, 'srv_downtime':srv_downtime,
-                             'total_uptime':total_uptime})
+            services.append({'service': service, 'srv_downtime': srv_downtime,
+                             'total_uptime': total_uptime})
 
         return services
 
@@ -167,9 +167,10 @@ class SQLDBAdapter(DBAdapter):
                 record['lost_pkts'] += instance.packet_loss / 100.0
                 record['attempts'] += 1
             else:
-                data[instance.address] = {'address': instance.address,
-                                          'lost_pkts': instance.packet_loss / 100.0,
-                                          'attempts': 1}
+                data[instance.address] = {
+                    'address': instance.address,
+                    'lost_pkts': instance.packet_loss / 100.0,
+                    'attempts': 1}
         return list(data.values())
 
     def get_service_statuses(self):

@@ -13,10 +13,7 @@ from keystoneclient.v3 import client as keystone_client
 from keystoneauth1.identity import Password
 from neutronclient.v2_0 import client as neutron_client
 
-from datetime import datetime
 from urlparse import urlparse
-from db_adapters import InfluxDBAdapter
-
 from db_adapters import InfluxDBAdapter, SQLDBAdapter
 
 SERVICE_TIMEOUT = 0.9
@@ -67,16 +64,17 @@ class Downtimer(object):
         self.stdin_path = '/dev/null'
         self.stdout_path = '/var/log/downtimer_output'
         self.stderr_path = '/dev/tty'
-        self.pidfile_path =  '/var/run/downtimer.pid'
+        self.pidfile_path = '/var/run/downtimer.pid'
         self.pidfile_timeout = 5
         self.conf = Config(conf_file)
         self.db_adapter = adapters[self.conf.db_adapter](self.conf)
         self.threads = []
 
     def run(self):
-        auth = Password(auth_url=self.conf.auth_url, username=self.conf.os_user,
-                        password=self.conf.os_pass, project_name="admin",
-                        user_domain_id="default", project_domain_id="default")
+        auth = Password(auth_url=self.conf.auth_url,
+                        username=self.conf.os_user, password=self.conf.os_pass,
+                        project_name="admin", user_domain_id="default",
+                        project_domain_id="default")
         sess = session.Session(auth=auth)
         keystone = keystone_client.Client(session=sess)
         for service in keystone.services.list():
@@ -112,10 +110,11 @@ class Downtimer(object):
                          service['total_uptime']))
 
             for instance in self.db_adapter.get_instance_statuses():
-                f.write("Address %s was unreachable approximately %.1f second "
-                        "which are %.1f %% of total uptime\n" %
-                        (instance['address'], instance['lost_pkts'],
-                         (instance['lost_pkts'] * 100.0) / instance['attempts']))
+                f.write(
+                    "Address %s was unreachable approximately %.1f second "
+                    "which are %.1f %% of total uptime\n" %
+                    (instance['address'], instance['lost_pkts'],
+                        (instance['lost_pkts'] * 1e2) / instance['attempts']))
 
 
 def do_check(endpoint, address, db_adapter):
@@ -145,8 +144,8 @@ def do_check(endpoint, address, db_adapter):
 
         wait_time = 1 - elapsed * 1e-6
         time.sleep(wait_time)
-    
-    
+
+
 def ping(address, db_adapter):
     while True:
         try:
@@ -164,19 +163,20 @@ def ping(address, db_adapter):
             exit_code = '1'
             packet_loss = '100'
             total_time = '2000'
-        print 'ttt = %s loss = %s code = %s' % (total_time, packet_loss, exit_code)
 
-        db_adapter.store_instance_status(address, total_time, exit_code, packet_loss)
+        db_adapter.store_instance_status(address, total_time,
+                                         exit_code, packet_loss)
 
 if __name__ == "__main__":
     logger = logging.getLogger("Downtimer")
     logger.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler = logging.FileHandler("/var/log/downtimer.log")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
     downtimer_app = Downtimer()
     daemon_runner = Daemon(downtimer_app)
-    daemon_runner.daemon_context.files_preserve=[handler.stream]
+    daemon_runner.daemon_context.files_preserve = [handler.stream]
     daemon_runner.do_action()
