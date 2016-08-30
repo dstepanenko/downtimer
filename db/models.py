@@ -1,7 +1,6 @@
 import sqlalchemy as sa
 from oslo_utils import uuidutils
 from sqlalchemy import create_engine
-from sqlalchemy import orm
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -12,6 +11,7 @@ class HasId(object):
     id = sa.Column(sa.String(36),
                    primary_key=True,
                    default=uuidutils.generate_uuid)
+
 
 class Service(Base, HasId):
     __tablename__ = 'services'
