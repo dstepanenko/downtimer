@@ -108,12 +108,11 @@ class DowntimerTest(unittest.TestCase):
         for call in calls:
             call_params_list = [y for y in call]
             func, args = call_params_list[1]
+            self.assertTrue(func.__name__ in ('do_check', 'ping'))
             if func.__name__ == 'do_check':
                 expected_check_arg_list.append(args)
             if func.__name__ == 'ping':
                 expected_ping_arg_list.append(args)
-            else:
-                assert(False, 'Unknown called function type')
 
         real_check_arg_list = []
         for service in fake_keystone_services_list:
