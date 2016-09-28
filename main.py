@@ -46,7 +46,7 @@ class Daemon(runner.DaemonRunner):
 class Config(object):
     def __init__(self, file_name):
         conf = ConfigParser.ConfigParser()
-        conf.read(CONFIG_FILE)
+        conf.read(file_name)
 
         self.auth_url = conf.get('global', 'keystone_endpoint')
         self.os_user = conf.get('global', 'user')
