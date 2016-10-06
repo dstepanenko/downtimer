@@ -167,7 +167,8 @@ def ping(address, db_adapter):
         db_adapter.store_instance_status(address, total_time,
                                          exit_code, packet_loss)
 
-if __name__ == "__main__":
+
+def main(argv=None):
     logger = logging.getLogger("Downtimer")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter(
@@ -180,3 +181,7 @@ if __name__ == "__main__":
     daemon_runner = Daemon(downtimer_app)
     daemon_runner.daemon_context.files_preserve = [handler.stream]
     daemon_runner.do_action()
+
+
+if __name__ == "__main__":
+    main()
