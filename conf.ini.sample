@@ -1,5 +1,5 @@
 [global]
-keystone_endpoint=http://172.29.236.10:5000
+keystone_endpoint=http://192.168.1.5:5000
 user=admin
 password=secret
 report_file=/var/log/downtimer.report
