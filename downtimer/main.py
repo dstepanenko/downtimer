@@ -104,7 +104,7 @@ class Downtimer(object):
         with open(self.conf.report_file, "w") as f:
             for service in self.db_adapter.get_service_statuses():
                 f.write("Service %s was down approximately %d seconds which "
-                        "are %.1f%% of total uptime\n" %
+                        "amounting %.1f%% of total uptime\n" %
                         (service['service'], service['srv_downtime'],
                          (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
@@ -112,7 +112,7 @@ class Downtimer(object):
             for instance in self.db_adapter.get_instance_statuses():
                 f.write(
                     "Address %s was unreachable approximately %.1f second "
-                    "which are %.1f %% of total uptime\n" %
+                    "which amounting %.1f %% of total uptime\n" %
                     (instance['address'], instance['lost_pkts'],
                         (instance['lost_pkts'] * 1e2) / instance['attempts']))
 
