@@ -81,7 +81,11 @@ class Downtimer(object):
             endpoint = keystone.endpoints.find(service_id=service.id,
                                                interface='public')
             url = urlparse(endpoint.url)
-            new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            #handling different versions of identity API
+            if url.port:
+                new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            else:
+                new_url = endpoint.url
             self.add_worker(do_check, (service.name, new_url, self.db_adapter))
 
         neutron = neutron_client.Client(session=sess)
@@ -103,17 +107,18 @@ class Downtimer(object):
     def report(self):
         with open(self.conf.report_file, "w") as f:
             for service in self.db_adapter.get_service_statuses():
-                f.write("Service %s was down approximately %d seconds which "
-                        "amounting %.1f%% of total uptime\n" %
+                f.write("Service %s was down approximately %d seconds out of "
+                        "%d seconds which amounting %.1f%% of total uptime\n" %
                         (service['service'], service['srv_downtime'],
-                         (100.0 * service['srv_downtime']) /
+                         service['total_uptime'],
+                        (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
 
             for instance in self.db_adapter.get_instance_statuses():
                 f.write(
-                    "Address %s was unreachable approximately %.1f second "
-                    "which amounting %.1f %% of total uptime\n" %
-                    (instance['address'], instance['lost_pkts'],
+                    "Address %s was unreachable approximately %.1f second of "
+                    "%d seconds which amounting %.1f %% of total uptime\n" %
+                    (instance['address'], instance['lost_pkts'], instance['attempts'],
                         (instance['lost_pkts'] * 1e2) / instance['attempts']))
 
 
