@@ -124,6 +124,7 @@ class Downtimer(object):
 
 def do_check(endpoint, address, db_adapter):
     while True:
+        start_time = time.time()
         try:
             timeout = 0
             r = requests.get(address, timeout=SERVICE_TIMEOUT)
@@ -147,15 +148,22 @@ def do_check(endpoint, address, db_adapter):
         db_adapter.store_service_status(endpoint, address, status_code,
                                         timeout, elapsed)
 
-        wait_time = 1 - elapsed * 1e-6
-        time.sleep(wait_time)
+        finish_time = time.time()
+        '''
+        Counting time spent on all this code execution in seconds
+        to make all the time gaps between consecutive measurements equal
+        '''
+        time_spent = finish_time - start_time
+        if time_spent < 2:
+            time.sleep(2 - time_spent)
 
 
 def ping(address, db_adapter):
     while True:
+        start_time = time.time()
         try:
             response = subprocess.check_output(
-                ['ping', '-i', '0.2', '-c', '5', address],
+                ['ping', '-i', '0.2', '-c', '5', '-W', '1', address],
                 stderr=subprocess.STDOUT,  # get all output
                 universal_newlines=True  # return string not bytes
             )
@@ -167,10 +175,18 @@ def ping(address, db_adapter):
         except:
             exit_code = '1'
             packet_loss = '100'
-            total_time = '2000'
+            total_time = '1000'
 
         db_adapter.store_instance_status(address, total_time,
                                          exit_code, packet_loss)
+        finish_time = time.time()
+        '''
+        Counting time spent on all this code execution in seconds
+        to make all the time gaps between consecutive measurements equal
+        '''
+        time_spent = finish_time - start_time
+        if time_spent < 2:
+            time.sleep(2 - time_spent)
 
 
 def main(argv=None):
