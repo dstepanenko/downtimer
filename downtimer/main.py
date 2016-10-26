@@ -46,7 +46,7 @@ class Daemon(runner.DaemonRunner):
 class Config(object):
     def __init__(self, file_name):
         conf = ConfigParser.ConfigParser()
-        conf.read(CONFIG_FILE)
+        conf.read(file_name)
 
         self.auth_url = conf.get('global', 'keystone_endpoint')
         self.os_user = conf.get('global', 'user')
@@ -81,7 +81,11 @@ class Downtimer(object):
             endpoint = keystone.endpoints.find(service_id=service.id,
                                                interface='public')
             url = urlparse(endpoint.url)
-            new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            #handling different versions of identity API
+            if url.port:
+                new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
+            else:
+                new_url = endpoint.url
             self.add_worker(do_check, (service.name, new_url, self.db_adapter))
 
         neutron = neutron_client.Client(session=sess)
@@ -103,22 +107,24 @@ class Downtimer(object):
     def report(self):
         with open(self.conf.report_file, "w") as f:
             for service in self.db_adapter.get_service_statuses():
-                f.write("Service %s was down approximately %d seconds which "
-                        "are %.1f%% of total uptime\n" %
+                f.write("Service %s was down approximately %d seconds out of "
+                        "%d seconds which amounting %.1f%% of total uptime\n" %
                         (service['service'], service['srv_downtime'],
-                         (100.0 * service['srv_downtime']) /
+                         service['total_uptime'],
+                        (100.0 * service['srv_downtime']) /
                          service['total_uptime']))
 
             for instance in self.db_adapter.get_instance_statuses():
                 f.write(
-                    "Address %s was unreachable approximately %.1f second "
-                    "which are %.1f %% of total uptime\n" %
-                    (instance['address'], instance['lost_pkts'],
+                    "Address %s was unreachable approximately %.1f second of "
+                    "%d seconds which amounting %.1f %% of total uptime\n" %
+                    (instance['address'], instance['lost_pkts'], instance['attempts'],
                         (instance['lost_pkts'] * 1e2) / instance['attempts']))
 
 
 def do_check(endpoint, address, db_adapter):
     while True:
+        start_time = time.time()
         try:
             timeout = 0
             r = requests.get(address, timeout=SERVICE_TIMEOUT)
@@ -142,15 +148,22 @@ def do_check(endpoint, address, db_adapter):
         db_adapter.store_service_status(endpoint, address, status_code,
                                         timeout, elapsed)
 
-        wait_time = 1 - elapsed * 1e-6
-        time.sleep(wait_time)
+        finish_time = time.time()
+        '''
+        Counting time spent on all this code execution in seconds
+        to make all the time gaps between consecutive measurements equal
+        '''
+        time_spent = finish_time - start_time
+        if time_spent < 2:
+            time.sleep(2 - time_spent)
 
 
 def ping(address, db_adapter):
     while True:
+        start_time = time.time()
         try:
             response = subprocess.check_output(
-                ['ping', '-i', '0.2', '-c', '5', address],
+                ['ping', '-i', '0.2', '-c', '5', '-W', '1', address],
                 stderr=subprocess.STDOUT,  # get all output
                 universal_newlines=True  # return string not bytes
             )
@@ -162,12 +175,21 @@ def ping(address, db_adapter):
         except:
             exit_code = '1'
             packet_loss = '100'
-            total_time = '2000'
+            total_time = '1000'
 
         db_adapter.store_instance_status(address, total_time,
                                          exit_code, packet_loss)
+        finish_time = time.time()
+        '''
+        Counting time spent on all this code execution in seconds
+        to make all the time gaps between consecutive measurements equal
+        '''
+        time_spent = finish_time - start_time
+        if time_spent < 2:
+            time.sleep(2 - time_spent)
 
-if __name__ == "__main__":
+
+def main(argv=None):
     logger = logging.getLogger("Downtimer")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter(
@@ -180,3 +202,7 @@ if __name__ == "__main__":
     daemon_runner = Daemon(downtimer_app)
     daemon_runner.daemon_context.files_preserve = [handler.stream]
     daemon_runner.do_action()
+
+
+if __name__ == "__main__":
+    main()
