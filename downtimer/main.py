@@ -52,14 +52,22 @@ class Config(object):
         self.os_user = conf.get('global', 'user')
         self.os_pass = conf.get('global', 'password')
         self.report_file = conf.get('global', 'report_file')
-
+        try:
+            self.use_udp = conf.get('global', 'use_udp') in [True, '1', 'True', 'true']
+        except Exception:
+            self.use_udp = False
+        try:
+            self.udp_port  = int(conf.get('global', 'udp_port'))
+        except Exception:
+            # 4444 is a default udp port for InfluxDBClient
+            self.udp_port = 4444
         self.db_host = conf.get('db', 'host')
         self.db_port = conf.get('db', 'port')
         self.db_adapter = conf.get('db', 'adapter')
 
 
 class Downtimer(object):
-    def __init__(self, conf_file='conf.ini'):
+    def __init__(self, conf_file=CONFIG_FILE):
         #  All these paths should be defined for using python-daemon runner
         self.stdin_path = '/dev/null'
         self.stdout_path = '/var/log/downtimer_output'

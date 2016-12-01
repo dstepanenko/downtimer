@@ -30,6 +30,8 @@ class InfluxDBAdapter(DBAdapter):
             port=config.db_port
         )
         self.client = InfluxDBClient(config.db_host, config.db_port,
+                                     use_udp=config.use_udp,
+                                     udp_port=config.udp_port,
                                      database='endpoints')
 
     def store_instance_status(self, address, total_time, exit_code, value):
