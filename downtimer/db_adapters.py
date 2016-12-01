@@ -1,4 +1,6 @@
-from influxdb import InfluxDBClient
+import influxdb
+
+from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -29,24 +31,49 @@ class InfluxDBAdapter(DBAdapter):
             host=config.db_host,
             port=config.db_port
         )
-        self.client = InfluxDBClient(config.db_host, config.db_port,
+        self.client = influxdb.InfluxDBClient(config.db_host, config.db_port,
                                      use_udp=config.use_udp,
                                      udp_port=config.udp_port,
                                      database='endpoints')
 
     def store_instance_status(self, address, total_time, exit_code, value):
-        message = ('floating_ip_pings,address=%s total_time=%s,exit_code=%s,'
-                   'value=%s') % (address, total_time, exit_code, value)
-        influx_resp = requests.post(self.db_url, message)
-        self.logger.info(str(influx_resp.status_code))
+        current_time = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        json_body = [
+            {
+                "measurement": "floating_ip_pings",
+                "tags": {
+                    "address": address
+                },
+                "time" : current_time,
+                "fields": {
+                    "total_time": total_time,
+                    "exit_code": exit_code,
+                    "value": value
+                }
+            }
+        ]
+        self.client.write_points(json_body)
 
     def store_service_status(self, endpoint, address, status_code, timeout,
                              value):
-        message = ('service_response,service_name=%s,address=%s status_code=%s'
-                   ',timeout=%s,value=%s') % (endpoint, address, status_code,
-                                              timeout, value)
-        influx_resp = requests.post(self.db_url, message)
-        self.logger.info(str(influx_resp.status_code))
+        current_time = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        json_body = [
+            {
+                "measurement": "service_response",
+                "tags": {
+                    "service_name": endpoint,
+                    "address": address
+                },
+                "time" : current_time,
+                "fields": {
+                    "status_code": float(status_code),
+                    "timeout": float(timeout),
+                    "value": float(value)
+                }
+            }
+        ]
+
+        self.client.write_points(json_body)
 
     def get_instance_statuses(self):
         tags_resp = self.client.query('show tag values from floating_ip_pings '
