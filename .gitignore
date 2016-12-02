@@ -3,3 +3,4 @@ conf.ini
 .tox
 *.egg-info
 .eggs
+*.pyc
