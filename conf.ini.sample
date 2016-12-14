@@ -1,10 +1,31 @@
+[DEFAULT]
+log_level=DEBUG
+log_file=/var/log/downtimer.log
+log_format=%%(asctime)s - %%(name)s - %%(levelname)s - %%(message)s
+pid_file=/tmp/downtimer.pid
+report_file=/var/log/downtimer.report
+
 [global]
-keystone_endpoint=http://192.168.1.5:5000
+#openstack or static
+mode=static
+
+[static]
+#ip addresses for static mode
+ips=172.18.88.12,172.18.88.13
+
+[openstack]
+#keystone endpoint for openstack
+endpoint=http://192.168.1.16:5000
 user=admin
 password=secret
-report_file=/var/log/downtimer.report
-[db]
-adapter=sql
-host=sqlite:///downtimer.db
+
+[database]
+adapter=influx
+host=172.18.66.109
+#host=sqlite:///downtimer.db
 #host=monit-ent.vm.mirantis.net
+
+[influxdb]
 port=8086
+use_udp=True
+udp_port=8089
