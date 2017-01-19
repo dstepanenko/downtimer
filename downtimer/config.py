@@ -50,5 +50,10 @@ class Config(object):
             except Exception:
                 # 4444 is a default udp port for InfluxDBClient
                 self.udp_port = 4444
+        # Set the database name
+        try:
+            self.db_name = conf.get('influxdb', 'name')
+        except ConfigParser.NoOptionError:
+            self.db_name = 'endpoints'
 
 CONF = Config(CONFIG_FILE)

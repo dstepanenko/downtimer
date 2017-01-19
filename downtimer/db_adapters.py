@@ -27,14 +27,15 @@ class DBAdapter(object):
 class InfluxDBAdapter(DBAdapter):
     def __init__(self, config):
         self.logger = logging.getLogger('InfluxDBAdapter')
-        self.db_url = 'http://{host}:{port}/write?db=endpoints'.format(
+        self.db_url = 'http://{host}:{port}/write?db={name}'.format(
             host=config.db_host,
-            port=config.db_port
+            port=config.db_port,
+            name=config.db_name
         )
         self.client = influxdb.InfluxDBClient(config.db_host, config.db_port,
                                      use_udp=config.use_udp,
                                      udp_port=config.udp_port,
-                                     database='endpoints')
+                                     database=config.db_name)
 
     def store_instance_status(self, address, total_time, exit_code, value):
         current_time = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -82,12 +83,22 @@ class InfluxDBAdapter(DBAdapter):
                      tags_resp[(u'floating_ip_pings', None)]]
         total_ping = self.client.query('select count(value) from '
                                        'floating_ip_pings group by address;')
-        bad_ping_exit_code = self.client.query(
-            'select sum(value) from floating_ip_pings '
-            'where exit_code <> 0 group by address;')
-        partially_lost_ping = self.client.query(
-            'select sum(value) from floating_ip_pings '
-            'where exit_code = 0 group by address;')
+
+        try:
+            bad_ping_exit_code = self.client.query(
+              'select sum(value) from floating_ip_pings '
+              'where exit_code <> 0 group by address;'
+            )
+        except influxdb.exceptions.InfluxDBClientError:
+            bad_ping_exit_code = 0
+
+        try:
+            partially_lost_ping = self.client.query(
+              'select sum(value) from floating_ip_pings '
+              'where exit_code = 0 group by address;'
+            )
+        except influxdb.exceptions.InfluxDBClientError:
+            partially_lost_ping = 0
 
         statuses = []
 
