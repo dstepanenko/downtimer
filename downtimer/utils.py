@@ -15,9 +15,10 @@ def do_check(endpoint, address, db_adapter):
             r = requests.head(address, timeout=SERVICE_TIMEOUT)
             status_msg = 'FAIL'
             if r.status_code >= 400:
-                r = requests.get(address + 'healthcheck', timeout=SERVICE_TIMEOUT)
+                _address = address + 'healthcheck'
+                r = requests.get(_address, timeout=SERVICE_TIMEOUT)
                 if r.status_code < 300:
-                    address = address + 'healthcheck'
+                    address = _address
                     status_msg = 'OK'
             elif r.status_code < 400:
                 status_msg = 'OK'
