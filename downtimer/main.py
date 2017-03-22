@@ -52,11 +52,7 @@ class Downtimer(object):
             endpoint = keystone.endpoints.find(service_id=service.id,
                                                interface='public')
             url = urlparse(endpoint.url)
-            # handling different versions of identity API
-            if url.port:
-                new_url = "http://" + url.hostname + ":" + str(url.port) + "/"
-            else:
-                new_url = endpoint.url
+            new_url = '{0}://{1}'.format(url.scheme, url.netloc)
             self.add_worker(utils.do_check,
                             (service.name, new_url, self.db_adapter))
 
