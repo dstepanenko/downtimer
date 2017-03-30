@@ -12,7 +12,7 @@ def do_check(endpoint, address, db_adapter):
         start_time = time.time()
         try:
             timeout = 0
-            r = requests.head(address, timeout=SERVICE_TIMEOUT)
+            r = requests.head(address, timeout=SERVICE_TIMEOUT, verify=False)
             status_msg = 'FAIL'
             if r.status_code >= 400:
                 # In the event that the endpoint URL returns a status code
@@ -20,7 +20,8 @@ def do_check(endpoint, address, db_adapter):
                 #  "http://<service_endpoint>/<service_port>/healthcheck"
                 #  before marking the endpoint as down.
                 _address = address + 'healthcheck'
-                r = requests.get(_address, timeout=SERVICE_TIMEOUT)
+                r = requests.get(_address, timeout=SERVICE_TIMEOUT,
+                                 verify=False)
                 if r.status_code < 300:
                     address = _address
                     status_msg = 'OK'
